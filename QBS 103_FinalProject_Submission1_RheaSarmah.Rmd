@@ -1,0 +1,117 @@
+---
+title: 'QBS 103: Final Project'
+author: "Rhea Sarmah"
+date: "2025-07-11"
+output: html_document
+---
+### QBS 103 Final Project
+#### Check-In 1
+
+Read in the gene expression data and metadata.
+```{r}
+# Using read.csv() to read in the gene expression data and the metadata
+gene_data <- read.csv('/Users/rheasarmah/Desktop/dartmouth 2025-2026/Summer Quarter 2025/QBS 103/Final Project/QBS_103_FinalProject/QBS103_GSE157103_genes.csv')
+head(gene_data)
+
+series_data <- read.csv('/Users/rheasarmah/Desktop/dartmouth 2025-2026/Summer Quarter 2025/QBS 103/Final Project/QBS_103_FinalProject/QBS103_GSE157103_series_matrix.csv')
+head(series_data)
+```
+Transpose the dataframe and link the two datasets.
+
+My chosen gene and covariates are: 
+Gene: AAAS
+Continuous covariate: Age
+Categorical covariates: mechanical ventilation, ICU status
+```{r}
+# Linking the data:
+## Need to switch the columns and rows for the second data frame so the participant ID is aligned with the columns and the variables are the rows. Use pivot_longer to switch everything to a long data frame? Code inspired from these links: https://stackoverflow.com/questions/34004008/transposing-in-dplyr, https://stackoverflow.com/questions/65427678/how-to-transpose-a-data-frame-in-r-using-dplyr
+library(tidyverse)
+library(tidyr)
+library(dplyr)
+
+long_gene_data <- gene_data %>% 
+  # Use pivot_longer from tidyr to switch the columns with the rows
+  pivot_longer(cols = -X, # this tells R that we want to switch the rows and columns for X. Using just X will not create a working dataframe!
+               names_to = "participant_id", # this tells R where the names should be stored
+               values_to = "value") # this tells R where to store the new information
+head(long_gene_data)
+
+# Now that we have two datasets with the participant ID as a column, we can combine the two datasets!
+## I received help from Gauri to do this, who taught me about the merge function.
+## I looked at this link to understand how to use the merge function: https://www.datacamp.com/doc/r/merging
+final_gene_data <- merge(long_gene_data, # the first dataframe
+                         series_data, # the second dataframe
+                         by = "participant_id") # by tells us the "link" between the two datasets. this is why we needed to switch the rows and columns on our dataframe first
+head(final_gene_data)
+```
+
+Creating a Theme
+```{r}
+# creating a custom theme for better data visualization
+newTheme <- theme(
+        # Define my axis
+        axis.line = element_line(colour = "black", linewidth = rel(1)),
+        # Set plot background
+        plot.background = element_rect(fill = "white"),
+        panel.background = element_blank(), 
+        # Center the title
+        plot.title = element_text(hjust = 0.5),
+        # Adjusting the legend legend for the boxplot later
+        legend.background = element_blank(),
+        legend.key = element_blank(),
+        legend.position = 'bottom')
+```
+
+
+Creating the Histogram for Gene Expression
+```{r}
+# Filter for Gene: AAAS
+library(ggplot2)
+
+AAAS_histogram <- ggplot(final_gene_data %>% # Piping the data from the final merged gene set
+         filter(X == "AAAS"), # Choosing the rows with the gene AAAS
+       aes(x = value)) + # Selecting the values for the gene AAAS
+  geom_histogram(bins = 15, fill = "#BCEEEA", color = "black") + # Creating the histogram, defining the number of bins, and selecting the colors
+  labs(title = "Distribution of AAAS Expression", x = 'Gene Expression',y = 'Frequency') + # adding the labels for the title, x-axis, and y-axis
+  newTheme
+
+AAAS_histogram
+```
+
+Creating the Scatterplot for Gene Expression (AAAS) and Continuous Covariate (Age)
+```{r}
+library(ggplot2)
+## I was running into problems with the values on the x-axis of my graph. They were listing each individual value instead of a range like I wanted. For ideas on why this might be the case, I asked the Dartmouth ChatGPT 4.1 mini model for assistance. This is what I asked: "I am trying to use ggplot2 in R Studio to make a histogram with age as my x-axis. Although I am able to plot the scatter plot, the x-axis range is all out of order. How can I order the x-axis?"
+## And this is what ChatGPT answered in return: "When you say the x-axis range is "all out of order," it sounds like your age variable might be treated as a factor or character rather than a numeric variable. In histograms, the x-axis should be numeric to display the bins in the correct order."
+## This was something I forgot to consider, and gave me a direction on how I could fix my axis values! If they were characters instead of numerics, it makes sense that R would not interpret it as a range of values and would want to plot it as individual values. 
+# First, I checked whether the age column was numeric:
+str(final_gene_data$age)
+# This shows us that the age is a character and not a numeric, affecting how it shows up in the x-axis. We need to convert it! This can be done using as.numeric():
+final_gene_data$age <- as.numeric(final_gene_data$age)
+# Now that the values are converted, I can proceed as I did before. This ended up fixing the problem I was having!
+
+AAAS_age_scatterplot <- ggplot(final_gene_data %>% # Piping the data from the final merged set
+         filter(X == "AAAS"), # Choosing the rows with the gene AAAS
+         aes(x = age,y = value)) + # Selecting age as the x-axis and value as the y-axis allows us to understand the relationship between gene expression of AAAS and age
+  geom_point(color = "darkblue") +
+  labs(title = "Age vs. Expression of Gene AAAS", x = "Age (Years)", y = "Gene Expression") + # Adding labels to the title and axes
+  newTheme # Using the preset theme
+
+AAAS_age_scatterplot
+```
+
+Creating the Boxplot of Gene Expression separated by Both Categorical Covariates (ICU status, mechanical ventilation)
+```{r}
+AAAS_ICU_ventilation_boxplot <- ggplot(final_gene_data %>% # Piping the data from the final merged set
+         filter(X == "AAAS"), # Choosing the rows with the gene AAAS
+         aes(x = icu_status,y = value, fill = mechanical_ventilation)) + # Selecting ICU Status as the x-axis, AAAS value as the y-axis, and adding mechanical ventilation as a boxplot to compare between ICU_status being yes or no
+  geom_boxplot() + # Add the boxplot
+  labs(title = "Expression of Gene AAAS vs. ICU Status and Mechanical Ventilation Usage", x = "ICU Status", y = 'Gene Expression', fill = "Mechanical Ventilation Usage") + # Adding labels
+  newTheme + # Adding our defined theme
+  scale_fill_manual(values = c('pink','#BCEEEA')) # Making the colors pretty!
+
+
+AAAS_ICU_ventilation_boxplot
+```
+
+
