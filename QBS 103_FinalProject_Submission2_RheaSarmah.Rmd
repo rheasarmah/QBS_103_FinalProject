@@ -11,10 +11,10 @@ Read in the gene expression data and metadata.
 ```{r}
 # Using read.csv() to read in the gene expression data and the metadata
 gene_data <- read.csv('/Users/rheasarmah/Desktop/dartmouth 2025-2026/Summer Quarter 2025/QBS 103/Final Project/QBS_103_FinalProject/QBS103_GSE157103_genes.csv')
-head(gene_data)
+#head(gene_data)
 
 series_data <- read.csv('/Users/rheasarmah/Desktop/dartmouth 2025-2026/Summer Quarter 2025/QBS 103/Final Project/QBS_103_FinalProject/QBS103_GSE157103_series_matrix.csv')
-head(series_data)
+#head(series_data)
 ```
 Transpose the dataframe and link the two datasets.
 
@@ -34,7 +34,7 @@ long_gene_data <- gene_data %>%
   pivot_longer(cols = -X, # this tells R that we want to switch the rows and columns for X. Using just X will not create a working dataframe!
                names_to = "participant_id", # this tells R where the names should be stored
                values_to = "value") # this tells R where to store the new information
-head(long_gene_data)
+#head(long_gene_data)
 
 # Now that we have two datasets with the participant ID as a column, we can combine the two datasets!
 ## I received help from Gauri to do this, who taught me about the merge function.
@@ -42,7 +42,7 @@ head(long_gene_data)
 final_gene_data <- merge(long_gene_data, # the first dataframe
                          series_data, # the second dataframe
                          by = "participant_id") # by tells us the "link" between the two datasets. this is why we needed to switch the rows and columns on our dataframe first
-head(final_gene_data)
+#head(final_gene_data)
 ```
 
 Creating a Theme
