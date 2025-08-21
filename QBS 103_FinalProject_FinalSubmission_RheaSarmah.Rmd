@@ -1,0 +1,386 @@
+---
+title: 'QBS 103: Final Project'
+author: "Rhea Sarmah"
+date: "2025-07-11"
+output: html_document
+---
+### QBS 103 Final Project
+#### Check-In 1
+
+Read in the gene expression data and metadata.
+```{r}
+# Using read.csv() to read in the gene expression data and the metadata
+gene_data <- read.csv('/Users/rheasarmah/Desktop/dartmouth 2025-2026/Summer Quarter 2025/QBS 103/Final Project/QBS_103_FinalProject/QBS103_GSE157103_genes.csv')
+#head(gene_data)
+
+series_data <- read.csv('/Users/rheasarmah/Desktop/dartmouth 2025-2026/Summer Quarter 2025/QBS 103/Final Project/QBS_103_FinalProject/QBS103_GSE157103_series_matrix.csv')
+#head(series_data)
+```
+Transpose the dataframe and link the two datasets.
+
+My chosen gene and covariates are: 
+Gene: AAAS
+Continuous covariate: Age
+Categorical covariates: mechanical ventilation, ICU status
+```{r}
+# Linking the data:
+## Need to switch the columns and rows for the second data frame so the participant ID is aligned with the columns and the variables are the rows. Use pivot_longer to switch everything to a long data frame? Code inspired from these links: https://stackoverflow.com/questions/34004008/transposing-in-dplyr, https://stackoverflow.com/questions/65427678/how-to-transpose-a-data-frame-in-r-using-dplyr
+library(tidyverse)
+library(tidyr)
+library(dplyr)
+
+long_gene_data <- gene_data %>% 
+  # Use pivot_longer from tidyr to switch the columns with the rows
+  pivot_longer(cols = -X, # this tells R that we want to switch the rows and columns for X. Using just X will not create a working dataframe!
+               names_to = "participant_id", # this tells R where the names should be stored
+               values_to = "value") # this tells R where to store the new information
+#head(long_gene_data)
+
+# Now that we have two datasets with the participant ID as a column, we can combine the two datasets!
+## I received help from Gauri to do this, who taught me about the merge function.
+## I looked at this link to understand how to use the merge function: https://www.datacamp.com/doc/r/merging
+final_gene_data <- merge(long_gene_data, # the first dataframe
+                         series_data, # the second dataframe
+                         by = "participant_id") # by tells us the "link" between the two datasets. this is why we needed to switch the rows and columns on our dataframe first
+#head(final_gene_data)
+```
+
+Creating a Theme
+```{r}
+# creating a custom theme for better data visualization
+newTheme <- theme(
+        # Define my axis
+        axis.line = element_line(colour = "black", linewidth = rel(1)),
+        # Set plot background
+        plot.background = element_rect(fill = "white"),
+        panel.background = element_blank(), 
+        # Center and bold the title
+        plot.title = element_text(hjust = 0.5, face = "bold"),
+        # Bold axis titles
+        axis.title.x = element_text(face = "bold"),
+        axis.title.y = element_text(face = "bold"),
+        # Adjusting the legend legend for the boxplot later
+        legend.background = element_blank(),
+        legend.key = element_blank(),
+        legend.position = 'bottom')
+```
+
+
+Creating the Histogram for Gene Expression
+```{r}
+# Filter for Gene: AAAS
+library(ggplot2)
+
+AAAS_histogram <- ggplot(final_gene_data %>% # Piping the data from the final merged gene set
+         filter(X == "AAAS"), # Choosing the rows with the gene AAAS
+       aes(x = value)) + # Selecting the values for the gene AAAS
+  geom_histogram(bins = 15, fill = "#BCEEEA", color = "black") + # Creating the histogram, defining the number of bins, and selecting the colors
+  labs(title = "Distribution of AAAS Expression", x = 'Gene Expression',y = 'Frequency') + # adding the labels for the title, x-axis, and y-axis
+  newTheme
+
+AAAS_histogram
+```
+
+Creating the Scatterplot for Gene Expression (AAAS) and Continuous Covariate (Age)
+```{r}
+library(ggplot2)
+## I was running into problems with the values on the x-axis of my graph. They were listing each individual value instead of a range like I wanted. For ideas on why this might be the case, I asked the Dartmouth ChatGPT 4.1 mini model for assistance. This is what I asked: "I am trying to use ggplot2 in R Studio to make a histogram with age as my x-axis. Although I am able to plot the scatter plot, the x-axis range is all out of order. How can I order the x-axis?"
+## And this is what ChatGPT answered in return: "When you say the x-axis range is "all out of order," it sounds like your age variable might be treated as a factor or character rather than a numeric variable. In histograms, the x-axis should be numeric to display the bins in the correct order."
+## This was something I forgot to consider, and gave me a direction on how I could fix my axis values! If they were characters instead of numerics, it makes sense that R would not interpret it as a range of values and would want to plot it as individual values. 
+# First, I checked whether the age column was numeric:
+str(final_gene_data$age)
+# This shows us that the age is a character and not a numeric, affecting how it shows up in the x-axis. We need to convert it! This can be done using as.numeric():
+final_gene_data$age <- as.numeric(final_gene_data$age)
+# Now that the values are converted, I can proceed as I did before. This ended up fixing the problem I was having!
+
+AAAS_age_scatterplot <- ggplot(final_gene_data %>% # Piping the data from the final merged set
+         filter(X == "AAAS"), # Choosing the rows with the gene AAAS
+         aes(x = age,y = value)) + # Selecting age as the x-axis and value as the y-axis allows us to understand the relationship between gene expression of AAAS and age
+  geom_point(color = "darkblue") +
+  labs(title = "Age vs. Expression of Gene AAAS", x = "Age (Years)", y = "Gene Expression") + # Adding labels to the title and axes
+  newTheme # Using the preset theme
+
+AAAS_age_scatterplot
+```
+
+Creating the Boxplot of Gene Expression separated by Both Categorical Covariates (ICU status, mechanical ventilation)
+```{r}
+AAAS_ICU_ventilation_boxplot <- ggplot(final_gene_data %>% # Piping the data from the final merged set
+         filter(X == "AAAS"), # Choosing the rows with the gene AAAS
+         aes(x = icu_status,y = value, fill = mechanical_ventilation)) + # Selecting ICU Status as the x-axis, AAAS value as the y-axis, and adding mechanical ventilation as a boxplot to compare between ICU_status being yes or no
+  geom_boxplot() + # Add the boxplot
+  labs(title = "Expression of Gene AAAS vs. ICU Status and Mechanical Ventilation Usage", x = "ICU Status", y = 'Gene Expression', fill = "Mechanical Ventilation Usage") + # Adding labels
+  newTheme + # Adding our defined theme
+  scale_fill_manual(values = c('pink','#BCEEEA')) # Making the colors pretty!
+
+
+AAAS_ICU_ventilation_boxplot
+```
+Building a function to generate plots (using the code from Data Analytics 1 Lecture as a basis!)
+```{r}
+# I was struggling with getting the function to read the variables I was inputting as columns from the dataframe, as it was only taking it as a string and not the column itself. After trying multiple possibilities (using quotes and no quotes when writing out the column names, defining the variables within the function using dataset$columnname instead of having it as a parameter for the function, using keyword arguments instead of positional arguments when recalling the function) I eventually asked Dartmouth ChatGPT for help on why this might be the case. The prompt I input into ChatGPT was "I'm trying to build a function that will generate plots based on the dataframe, list of genes, and chosen variables as parameters. I am able to successfully generate histograms with the correct values. I can also generate plots for the scatterplots and boxplots, but the plots that are generated do not actually read the column in the dataframe; it instead reads it as a string. How can I solve this problem?" I then also shared the code that I had.
+# ChatGPT noted that to solve the problem, I could use .data[[variable]] when defining my x and y values, and this would successfully read the column from the dataframe instead of treating it as a string. I was unfamiliar with using .data, so I did some googling on what it was to understand what it was doing to solve the problem. From this link (https://forum.posit.co/t/what-is-the-difference-between-and-data/76330) I learned that it is a method in tidyverse that tells R to reference a column within the dataset that we are working with. It makes sense why this would work, because it's telling R that we need to look at the dataset we are working with (which was filtered earlier in the function code) and to not treat the parameters as a string.
+
+plot_generator <- function(my_dataframe, genes_list, cont_var, cat_var_1, cat_var_2){ # the function will have parameters for the dataframe, the list of genes, the desired continuous variable, the 2 desired categorical variables
+  for (gene in genes_list){
+    subset_df <- my_dataframe %>% filter(X == gene) # this will create a new dataframe with only data for the gene we chose to look at
+    
+    my_histogram <- ggplot(subset_df, aes(x = value)) + # Creating the histogram with our new filtered dataframe and the gene expression values
+      geom_histogram(bins = 10, fill = "#BCEEEA", color = "black") + # Creating the histogram, defining the number of bins, and selecting the colors. This code was taken from my original histogram code
+      labs(title = paste("Distribution of", gene,  "Expression"), x = 'Gene Expression', y = 'Frequency') + # Adding the labels for the title, x-axis, and y-axis. I was struggling with how to make the title change with the respective gene it's making a plot of, so I went to Sherry's office hours for help. She suggested that I use the paste function, which allows for the combination of strings of characters and the names of variables!
+      newTheme # Using the custom theme. After the presentations, I decided to make the title and axis titles bold to make it easier to see.
+    
+    my_scatterplot <- ggplot(subset_df, aes(x = .data[[cont_var]], y = value)) + # As mentioned above, I used .data[[cont_var]] here to tell R to reference the dataset that we are working with here, in this case the filtered dataset subset_df. This solved the issue I was having with my code before
+      geom_point(color = "blue") + # switched the color to blue instead of dark blue because the original blue was a little difficult to see
+      labs(title = paste(cont_var, "vs. Expression of Gene", gene), x = cont_var, y = "Gene Expression") + 
+      newTheme
+    
+    my_boxplot <- ggplot(subset_df, aes(x = .data[[cat_var_1]],y = value, fill = .data[[cat_var_2]])) +
+      geom_boxplot() +
+      labs(title = paste("Expression of Gene", gene, "vs.", cat_var_1, "and", cat_var_2), x = cat_var_1, y = 'Gene Expression', fill = cat_var_2) +
+  newTheme +
+  scale_fill_manual(values = c('pink','#BCEEEA'))
+      
+    
+    plot(my_histogram)
+    plot(my_scatterplot)
+    plot(my_boxplot)
+  }
+}
+
+my_genes = c("AAAS", "ABCA5", "AATF") # Defining the list of 3 genes that I am interested in making plots for
+
+plot_generator(my_dataframe = final_gene_data, genes_list = my_genes, cont_var = "age", cat_var_1 = "icu_status", cat_var_2 = "mechanical_ventilation") # I used quotes around the columns and defined the parameters using keyword arguments to be certain it would be read properly by the function
+```
+Summary statistics table for 3 total continuous and 3 total categorical variables. Stratify by one of the categorical variables (sex)
+Categorical variables report n(%) and continuous variables report mean(sd) or median[IQR]
+```{r}
+# sourcing the TableOne code provided by Dr. Espinoza and Dr. Kosarek that they recommended we use. I made some adjustments to the code to work with my dataset. For the quantile functions: added na.rm = TRUE to remove the missing values, changed x to as.numeric(x) to convert the values to proper format,
+library(tidyverse)
+library(knitr)
+library(kableExtra)
+
+
+buildTableOne <- function(data, varList, nonnormVars = '', catVars = '') {
+  # making a list of variable names to change later
+  var_names <- c(
+    "age" = "Age",
+    "ferritin.ng.ml." = "Ferritin (ng/mL)",
+    "fibrinogen" = "Fibrinogen",
+    "mechanical_ventilation" = "Mechanical Ventilation",
+    "icu_status" = "ICU Status",
+    "sex" = "Sex"
+  )
+
+  # Define an empty table
+  table1 <- matrix(nrow = 0, ncol = 2)
+  # Keep track of rows to indent
+  indentRows <- c()
+  # Loop through all variables
+  for (var in varList) {
+    # Define vector of variable values
+    x <- data[, var]
+    # Changes the variable name if it's in the defined list
+    base_name <- if (var %in% names(var_names)) var_names[[var]] else var
+
+    # Identify if non-normal
+    if (var %in% nonnormVars) {
+      # Calculate individual values
+      myMedian <- round(median(as.numeric(x), na.rm = TRUE))
+      myIQR1 <- round(quantile(as.numeric(x), 1/4, na.rm = TRUE), digits = 2)
+      myIQR2 <- round(quantile(as.numeric(x), 3/4, na.rm = TRUE), digits = 2)
+      # Combine values
+      value <- paste0(myMedian, ' | [', myIQR1, ', ', myIQR2, ']')
+      # Define new row (use pretty base name)
+      newRow <- c(paste0(base_name, ' | Median [IQR]'), value)
+      # Add row to data frame
+      table1 <- rbind(table1, newRow)
+    }
+
+    # Identify if categorical
+    if (var %in% catVars) {
+      # Define new row for overall variable (use pretty base name)
+      newRow <- c(paste0(base_name, ' | n (%)'), '')
+      # Add row to data frame
+      table1 <- rbind(table1, newRow)
+      # Loop through levels of variable
+      for (level in levels(factor(x))) {
+        # Calculate n and perc
+        n <- sum(x == level, na.rm = TRUE)
+        perc <- round(n / (length(x)) * 100, digits = 2)
+        # Combine values
+        value <- paste0(n, ' | (', perc, ')')
+        # Define new row (for the level name we keep level text, but you could prettify if desired)
+        newRow <- c(level, value)
+        # Add row to data frame
+        table1 <- rbind(table1, newRow)
+        # Add index to indented rows
+        indentRows <- c(indentRows, nrow(table1))
+      }
+    }
+
+    # Otherwise treat as normally distributed
+    if (!(var %in% c(nonnormVars, catVars))) { # if the variable is not in either the non normal or categorical variable list
+      # Calculate individual values
+      myMean <- round(mean(as.numeric(x), na.rm = TRUE), 2)
+      mySD <- round(sd(as.numeric(x), na.rm = TRUE), 2)
+      # Combine values
+      value <- paste0(myMean, ' | (', mySD, ')')
+      # Define new row (use pretty base name)
+      newRow <- c(paste0(base_name, ' | Mean (sd)'), value)
+      # Add row to data frame
+      table1 <- rbind(table1, newRow)
+    }
+  }
+
+  # Define sample size for heading
+  sampleSize <- paste("n =", nrow(data))
+  # Print formatted table
+  kable(x = table1, caption = 'Gene Expression Summary Statistics', format = 'html', booktabs = T,
+        col.names = c("Variable", sampleSize),
+        align = c('l', 'r'), escape = T, row.names = F) %>%
+    kable_classic()
+}
+## This is the end of the code that was provided to us.
+
+
+```
+
+```{r}
+# I used ggplot to check whether my variables were normally distributed or not. Age and ferritin were not, while fibrinogen was
+# ggplot(data = cleaned_final_gene_data,aes(x = ferritin.ng.ml.)) +
+#  geom_histogram(binwidth = 50)
+
+# gene: AAAS gene produced ALADIN protein - mutations cause triple A syndrome
+# continuous variables: age, fibrinogen, ferritin
+# categorical variables: sex, ICU status, mechanical ventilation
+
+# convert the continuous rows to numeric
+final_gene_data$age <- as.numeric(final_gene_data$age)
+final_gene_data$fibrinogen <- as.numeric(final_gene_data$fibrinogen)
+final_gene_data$ferritin.ng.ml. <- as.numeric(final_gene_data$ferritin.ng.ml.)
+
+# clean the data by removing the NAs
+cleaned_final_gene_data <- na.omit(final_gene_data)
+
+# subset the data based on sex, which is the categorical variable I want to stratify by. I used dplyr and the filter function to do this, but I was having trouble with getting it to register my column. I input the issue into Dartmouth ChatGPT and it suggested that I trim the white space using trimws(), which solved the issue.
+male_gene_data <- cleaned_final_gene_data %>% filter((trimws(sex)) == "male")
+female_gene_data <- cleaned_final_gene_data %>% filter((trimws(sex)) == "female")
+# now we can create separate tables for the male and female subsets
+buildTableOne(data = cleaned_final_gene_data,varList = c('age','ferritin.ng.ml.','icu_status','fibrinogen','mechanical_ventilation','sex'),nonnormVars = c("age", "ferritin.ng.ml."), catVars = c('sex','mechanical_ventilation','icu_status'))
+
+buildTableOne(data = male_gene_data,varList = c('age','ferritin.ng.ml.','icu_status','fibrinogen','mechanical_ventilation','sex'),nonnormVars = c("age", "ferritin.ng.ml."), catVars = c('sex','mechanical_ventilation','icu_status'))
+
+buildTableOne(data = female_gene_data,varList = c('age','ferritin.ng.ml.','icu_status','fibrinogen','mechanical_ventilation','sex'),nonnormVars = c("age", "ferritin.ng.ml."), catVars = c('sex','mechanical_ventilation','icu_status'))
+
+```
+
+Final histogram, scatterplot, and boxplot for gene AAAS
+```{r}
+# adjusting the plot_generator code so that the titles are properly capitalized. I copied and pasted the code and made adjustments here
+AAAS_plot_generator <- function(my_dataframe, genes_list, cont_var, cat_var_1, cat_var_2){ # the function will have parameters for the dataframe, the list of genes, the desired continuous variable, the 2 desired categorical variables
+  for (gene in genes_list){
+    subset_df <- my_dataframe %>% filter(X == gene) # this will create a new dataframe with only data for the gene we chose to look at
+    
+    my_histogram <- ggplot(subset_df, aes(x = value)) + # Creating the histogram with our new filtered dataframe and the gene expression values
+      geom_histogram(bins = 10, fill = "#BCEEEA", color = "black") + # Creating the histogram, defining the number of bins, and selecting the colors. This code was taken from my original histogram code
+      labs(title = paste("Distribution of", gene,  "Expression"), x = 'Gene Expression', y = 'Frequency') +
+      newTheme # Using the custom theme. After the presentations, I decided to make the title and axis titles bold to make it easier to see.
+    
+    my_scatterplot <- ggplot(subset_df, aes(x = .data[[cont_var]], y = value)) + # As mentioned above, I used .data[[cont_var]] here to tell R to reference the dataset that we are working with here, in this case the filtered dataset subset_df. This solved the issue I was having with my code before
+      geom_point(color = "blue") + # switched the color to blue instead of dark blue because the original blue was a little difficult to see
+      labs(title = paste("Age vs. Expression of Gene", gene), x = "Age", y = "Gene Expression") + 
+      newTheme
+    
+    my_boxplot <- ggplot(subset_df, aes(x = .data[[cat_var_1]],y = value, fill = .data[[cat_var_2]])) +
+      geom_boxplot() +
+      labs(title = paste("Expression of Gene", gene, "vs. ICU Status and Mechanical Ventilation"), x = "ICU Status", y = 'Gene Expression', fill = "Mechanical Ventilation") +
+  newTheme +
+  scale_fill_manual(values = c('pink','#BCEEEA')) +
+  scale_x_discrete(labels = function(x) str_to_title(x)) # this adjusts the axis titles of the graph to uppercase
+      
+    
+    plot(my_histogram)
+    plot(my_scatterplot)
+    plot(my_boxplot)
+  }
+}
+
+# using the newly adjusted plot generator function
+AAAS_plot_generator(my_dataframe = final_gene_data, genes_list = "AAAS", cont_var = "age", cat_var_1 = "icu_status", cat_var_2 = "mechanical_ventilation") # I used quotes around the columns and defined the parameters using keyword arguments to be certain it would be read properly by the function
+```
+Generating a heatmap with at least 10 genes, tracking bars for the 2 categorical variables, and clustered rows and columns.
+```{r}
+# for this problem, I was having a lot of trouble with getting my heat map to work. Our TAs, Wenyu and Sherry, were a super big help in debugging my code and understanding where I went wrong!
+# need to calculate the variance in our dataset for the heat map!
+#gene_data # using the gene_data dataset because we want to look at the variance 
+# cleaning the data by omiting all NAs
+cleaned_gene_data <- na.omit(gene_data)
+
+# first, calculate the variance of each gene expression! we can use the apply function on the gene data set to find the variance.
+## Sherry and Wenyu helped me adjust my dataframe here so that the apply function would work. At first, I would get lines of NAs introduced by coercion, so this set the genes column as the rownames to make the apply function work properly
+rownames(cleaned_gene_data) <- cleaned_gene_data$X
+cleaned_gene_data <- cleaned_gene_data[,-1]
+
+# now that the data has been properly adjusted, we can apply the variance function to the dataset
+my_variance <- apply(cleaned_gene_data,MARGIN = 1,FUN = var, na.rm = TRUE)
+
+# now we can order the cleaned_gene_data by variance, so that we select the most varied and interesting gene expressions for our heatmap. This is where I was having trouble: initially, I was trying to plot the variance itself for the heatmap instead of using variance to order the data. The variance dataframe was only one row, so naturally it wouldn't work for heat map. It was thanks to their help and explanation that I realized that the variance was just a tool to order the data and create a more informative heat map.
+cleaned_gene_data <- cleaned_gene_data[order(my_variance,decreasing = T),]
+
+# we need to normalize the data using log2 (typical of heat maps) so that we can plot it on the heat map
+log2.cleaned_gene_data <- log2(cleaned_gene_data)
+
+help("pheatmap")
+
+# creating the heat map
+library(pheatmap)
+
+annotationData <- series_data[, c("participant_id","icu_status","mechanical_ventilation")]
+rownames(annotationData) <- annotationData$participant_id
+annotationData <- annotationData[,-1]
+
+annotationData$icu_status <- factor(annotationData$icu_status, labels = c("No", "Yes"))
+annotationData$mechanical_ventilation <- factor(annotationData$mechanical_ventilation, labels = c("No", "Yes"))
+colnames(annotationData) <- c("Mechanical Ventilation", "ICU Status")
+
+str(annotationData)
+
+# mechanical data and ICU status
+
+annotationColors <- list("ICU Status" = c('Yes' = 'lightgreen',
+                                    'No' = 'skyblue'),
+                         "Mechanical Ventilation" = c('Yes' = 'pink',
+                                    'No' = 'lavender'))
+
+pheatmap(log2.cleaned_gene_data[1:10,], 
+         clustering_distance_rows = 'euclidean',
+         clustering_distance_cols = 'euclidean',
+         annotation_col = annotationData,
+         annotation_colors = annotationColors,
+         show_colnames = FALSE,
+         main = "Gene Expression Heatmap")
+```
+Generating a new plot type from the ggplot documentation:
+```{r}
+help("ggplot2")
+# Checking the documentation to see which plots are available and which ones will be applicable to the data.
+
+# I chose to generate a plot showing the area under the curve of the distribution of gene expression.
+## subsetting the dataframe again
+
+AAAS_area <- ggplot(final_gene_data %>% # Piping the data from the final merged gene set
+         filter(X == "AAAS"), # Choosing the rows with the gene AAAS
+       aes(x = value)) + # Selecting the values for the gene AAAS
+  geom_area(stat = "bin", fill = "lavender", color = "black") + # Creating the histogram, defining the number of bins, and selecting the colors
+  labs(title = "Distribution of AAAS Expression", x = 'Gene Expression',y = 'Frequency') + # adding the labels for the title, x-axis, and y-axis
+  newTheme
+
+AAAS_area
+
+```
+
+```{r}
+citation('dplyr')
+```
+
